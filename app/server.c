@@ -86,8 +86,8 @@ int main() {
             strcpy(response_body, path + 6);
         }
     } else {
-        http_status_code = 404;
-        reason_phrase = "Not Found";
+        http_status_code = 200;
+        reason_phrase = "OK";
         response_body = "";
     }
     char headers[1024];
