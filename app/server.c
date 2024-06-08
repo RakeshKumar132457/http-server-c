@@ -57,8 +57,8 @@ int main() {
     printf("Client connected\n");
 
     char buffer[4096];
-    ssize_t byte_read = read(fd, buffer, sizeof(buffer) -1 );
-    if(byte_read < 0){
+    ssize_t byte_read = read(fd, buffer, sizeof(buffer) - 1);
+    if (byte_read < 0) {
         printf("Read failed: %s\n", strerror(errno));
         close(fd);
         close(server_fd);
@@ -70,26 +70,39 @@ int main() {
 
     char method[8], path[1024], version[16];
     sscanf(buffer, "%s %s %s", method, path, version);
-    
+
     printf("Method: %s, Path: %s, Version: %s\n", method, path, version);
 
     int http_status_code;
     const char *reason_phrase;
-    if(strcmp(path, "/") == 0){
+    const char *content_type = "text/plain";
+    char *response_body = NULL;
+    if (strncmp(path, "/echo/", 6) == 0) {
         http_status_code = 200;
         reason_phrase = "OK";
-    }else{
+        size_t response_lenth = strlen(path + 6) + 1;
+        response_body = malloc(response_lenth);
+        if (response_body != NULL) {
+            strcpy(response_body, path + 6);
+        }
+    } else {
         http_status_code = 404;
         reason_phrase = "Not Found";
     }
-    char reply[256];
-    snprintf(reply, sizeof(reply), "HTTP/1.1 %d %s\r\n\r\n", http_status_code, reason_phrase);
-    int byte_sent = send(fd, reply, strlen(reply), 0);
-    if(byte_sent < 0){
+    char headers[1024];
+    snprintf(headers, sizeof(headers),
+             "HTTP/1.1 %d %s \r\n"
+             "Content-Type: %s\r\n"
+             "Content-Length: %zu\r\n"
+             "\r\n",
+             http_status_code, reason_phrase, content_type, strlen(response_body));
+    char response[4096];
+    snprintf(response, sizeof(response), "%s%s", headers, response_body);
+    int byte_sent = send(fd, response, strlen(response), 0);
+    if (byte_sent < 0) {
         printf("Send failed: %s\n", strerror(errno));
         return 1;
     }
-
 
     close(server_fd);
     return 0;
