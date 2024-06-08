@@ -16,8 +16,7 @@ int main() {
 
     // Uncomment this block to pass the first stage
 
-    int server_fd,
-        client_addr_len;
+    socklen_t server_fd, client_addr_len;
     struct sockaddr_in client_addr;
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -55,11 +54,43 @@ int main() {
     client_addr_len = sizeof(client_addr);
 
     int fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
-    char *reply = "HTTP/1.1 200 OK\r\n\r\n";
-    int byte_sent = send(fd, reply, strlen(reply), 0);
     printf("Client connected\n");
 
-    close(server_fd);
+    char buffer[4096];
+    ssize_t byte_read = read(fd, buffer, sizeof(buffer) -1 );
+    if(byte_read < 0){
+        printf("Read failed: %s\n", strerror(errno));
+        close(fd);
+        close(server_fd);
+        return 1;
+    }
+    buffer[byte_read] = '\0';
 
+    printf("Received request:\n %s\n", buffer);
+
+    char method[8], path[1024], version[16];
+    sscanf(buffer, "%s %s %s", method, path, version);
+    
+    printf("Method: %s, Path: %s, Version: %s\n", method, path, version);
+
+    int http_status_code;
+    const char *reason_phrase;
+    if(strcmp(path, "/") == 0){
+        http_status_code = 200;
+        reason_phrase = "OK";
+    }else{
+        http_status_code = 404;
+        reason_phrase = "Not Found";
+    }
+    char reply[256];
+    snprintf(reply, sizeof(reply), "HTTP/1.1 %d %s\r\n\r\n", http_status_code, reason_phrase);
+    int byte_sent = send(fd, reply, strlen(reply), 0);
+    if(byte_sent < 0){
+        printf("Send failed: %s\n", strerror(errno));
+        return 1;
+    }
+
+
+    close(server_fd);
     return 0;
 }
