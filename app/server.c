@@ -91,7 +91,7 @@ int main() {
     }
     char headers[1024];
     snprintf(headers, sizeof(headers),
-             "HTTP/1.1 %d %s \r\n"
+             "HTTP/1.1 %d %s\r\n"
              "Content-Type: %s\r\n"
              "Content-Length: %zu\r\n"
              "\r\n",
