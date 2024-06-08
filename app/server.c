@@ -77,7 +77,12 @@ int main() {
     const char *reason_phrase;
     const char *content_type = "text/plain";
     char *response_body = NULL;
-    if (strncmp(path, "/echo/", 6) == 0) {
+
+    if (strncmp(path, "/", 1) == 0) {
+        http_status_code = 200;
+        reason_phrase = "OK";
+        response_body = "";
+    } else if (strncmp(path, "/echo/", 6) == 0) {
         http_status_code = 200;
         reason_phrase = "OK";
         size_t response_lenth = strlen(path + 6) + 1;
@@ -86,8 +91,8 @@ int main() {
             strcpy(response_body, path + 6);
         }
     } else {
-        http_status_code = 200;
-        reason_phrase = "OK";
+        http_status_code = 404;
+        reason_phrase = "Not Found";
         response_body = "";
     }
     char headers[1024];
