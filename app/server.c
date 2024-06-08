@@ -78,7 +78,7 @@ int main() {
     const char *content_type = "text/plain";
     char *response_body = NULL;
 
-    if (strncmp(path, "/", 1) == 0) {
+    if (strcmp(path, "/") == 0) {
         http_status_code = 200;
         reason_phrase = "OK";
         response_body = "";
