@@ -88,6 +88,7 @@ int main() {
     } else {
         http_status_code = 404;
         reason_phrase = "Not Found";
+        response_body = "";
     }
     char headers[1024];
     snprintf(headers, sizeof(headers),
