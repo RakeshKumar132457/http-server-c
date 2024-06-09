@@ -5,10 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define MAX_BUFFER_SIZE 4096
 #define MAX_HEADER_SIZE 1024
+#define MAX_FILENAME_LENGTH 256
 #define SERVER_PORT 4221
 #define BACKLOG 1
 
@@ -70,24 +72,53 @@ char *get_header_value(const char *header_start, const char *header_name) {
     return NULL;
 }
 
-Response *create_response(int status_code, const char *reason_phrase, const char *body) {
+Response *create_response(int status_code, const char *reason_phrase, const char *body, const char *content_type) {
     Response *response = malloc(sizeof(Response));
     response->status_code = status_code;
     response->reason_phrase = reason_phrase;
-    response->content_type = "text/plain";
+    response->content_type = content_type;
     response->body = strdup(body);
     return response;
 }
 
 Response *process_request(const char *method, const char *path, const char *user_agent) {
     if (strcmp(path, "/") == 0) {
-        return create_response(200, "OK", "");
+        return create_response(200, "OK", "", "text/plain");
     } else if (strncmp(path, "/echo/", 6) == 0) {
-        return create_response(200, "OK", path + 6);
+        return create_response(200, "OK", path + 6, "text/plain");
     } else if (strcmp(path, "/user-agent") == 0) {
-        return create_response(200, "OK", user_agent ? user_agent : "");
+        return create_response(200, "OK", user_agent ? user_agent : "", "text/plain");
+    } else if (strstr(path, "/files/") != NULL) {
+        char *filename = strstr(path, "/files/");
+        if (filename == NULL) {
+            return create_response(404, "Not Found", "", "text/plain");
+        }
+        filename += strlen("/files/");
+        char file_path[MAX_FILENAME_LENGTH];
+        snprintf(file_path, sizeof(file_path), "/tmp/%s", filename);
+        struct stat buffer;
+        if (stat(file_path, &buffer) == 0) {
+            FILE *file = fopen(file_path, "r");
+            if (file == NULL) {
+                perror("Error opening file\n");
+                exit(1);
+            }
+            char *file_content = malloc(buffer.st_size + 1);
+            if (file_content == NULL) {
+                fclose(file);
+                return create_response(500, "Internal Server Error", "", "text/plain");
+            }
+            size_t file_read = fread(file_content, 1, buffer.st_size, file);
+            file_content[file_read] = '\0';
+            fclose(file);
+            Response *response = create_response(200, "OK", file_content, "application/octet-stream");
+            free(file_content);
+            return response;
+        } else {
+            return create_response(404, "Not Found", "", "text/plain");
+        }
     } else {
-        return create_response(404, "Not Found", "");
+        return create_response(404, "Not Found", "", "text/plain");
     }
 }
 
@@ -141,6 +172,7 @@ void *handle_request(void *arg) {
         return NULL;
     }
     buffer[byte_read] = '\0';
+    printf("%s\n", buffer);
 
     char method[MAX_BUFFER_SIZE], path[MAX_BUFFER_SIZE], version[MAX_BUFFER_SIZE];
     sscanf(buffer, "%s %s %s", method, path, version);
