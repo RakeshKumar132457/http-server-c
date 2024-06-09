@@ -84,7 +84,7 @@ Response *create_response(int status_code, const char *reason_phrase, const char
     return response;
 }
 
-Response *process_request(const char *method, const char *path, const char *user_agent) {
+Response *process_request(const char *method, const char *path, const char *user_agent, const char *request_body) {
     if (strcmp(path, "/") == 0) {
         return create_response(200, "OK", "", "text/plain");
     } else if (strncmp(path, "/echo/", 6) == 0) {
@@ -92,33 +92,56 @@ Response *process_request(const char *method, const char *path, const char *user
     } else if (strcmp(path, "/user-agent") == 0) {
         return create_response(200, "OK", user_agent ? user_agent : "", "text/plain");
     } else if (strstr(path, "/files/") != NULL) {
-        char *filename = strstr(path, "/files/");
-        if (filename == NULL) {
-            return create_response(404, "Not Found", "", "text/plain");
-        }
-        filename += strlen("/files/");
-        char file_path[MAX_FILENAME_LENGTH];
-        snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, filename);
-        struct stat buffer;
-        if (stat(file_path, &buffer) == 0) {
-            FILE *file = fopen(file_path, "r");
+        if (strcmp(method, "GET") == 0) {
+            char *filename = strstr(path, "/files/");
+            if (filename == NULL) {
+                return create_response(404, "Not Found", "", "text/plain");
+            }
+            filename += strlen("/files/");
+            char file_path[MAX_FILENAME_LENGTH];
+            snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, filename);
+            struct stat buffer;
+            if (stat(file_path, &buffer) == 0) {
+                FILE *file = fopen(file_path, "r");
+                if (file == NULL) {
+                    perror("Error opening file\n");
+                    exit(1);
+                }
+                char *file_content = malloc(buffer.st_size + 1);
+                if (file_content == NULL) {
+                    fclose(file);
+                    return create_response(500, "Internal Server Error", "", "text/plain");
+                }
+                size_t file_read = fread(file_content, 1, buffer.st_size, file);
+                file_content[file_read] = '\0';
+                fclose(file);
+                Response *response = create_response(200, "OK", file_content, "application/octet-stream");
+                free(file_content);
+                return response;
+            } else {
+                return create_response(404, "Not Found", "", "text/plain");
+            }
+        } else if (strcmp(method, "POST") == 0) {
+            char *filename = strstr(path, "/files/");
+            if (filename == NULL) {
+                return create_response(404, "Not Found", "", "text/plain");
+            }
+            filename += strlen("/files/");
+            char file_path[MAX_FILENAME_LENGTH];
+            snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, filename);
+            printf("%s\n", file_path);
+            if (request_body == NULL) {
+                return create_response(400, "Bad Request", "", "text/plain");
+            }
+
+            FILE *file = fopen(file_path, "w");
             if (file == NULL) {
                 perror("Error opening file\n");
                 exit(1);
             }
-            char *file_content = malloc(buffer.st_size + 1);
-            if (file_content == NULL) {
-                fclose(file);
-                return create_response(500, "Internal Server Error", "", "text/plain");
-            }
-            size_t file_read = fread(file_content, 1, buffer.st_size, file);
-            file_content[file_read] = '\0';
+            fwrite(request_body, 1, strlen(request_body), file);
             fclose(file);
-            Response *response = create_response(200, "OK", file_content, "application/octet-stream");
-            free(file_content);
-            return response;
-        } else {
-            return create_response(404, "Not Found", "", "text/plain");
+            return create_response(201, "Created", "", "text/plain");
         }
     } else {
         return create_response(404, "Not Found", "", "text/plain");
@@ -181,8 +204,10 @@ void *handle_request(void *arg) {
     sscanf(buffer, "%s %s %s", method, path, version);
 
     char *user_agent = get_header_value(strstr(buffer, "\r\n") + 2, "User-Agent");
+    char *request_body = strstr(buffer, "\r\n\r\n");
+    request_body += strlen("\r\n\r\n");
 
-    Response *response = process_request(method, path, user_agent);
+    Response *response = process_request(method, path, user_agent, request_body);
     send_response(client_fd, response);
 
     free_response(response);
