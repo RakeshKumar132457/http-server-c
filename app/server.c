@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <pthread.h>
@@ -13,6 +14,8 @@
 #define MAX_FILENAME_LENGTH 256
 #define SERVER_PORT 4221
 #define BACKLOG 1
+
+char *dir_path = NULL;
 
 typedef struct {
     int status_code;
@@ -95,7 +98,7 @@ Response *process_request(const char *method, const char *path, const char *user
         }
         filename += strlen("/files/");
         char file_path[MAX_FILENAME_LENGTH];
-        snprintf(file_path, sizeof(file_path), "/tmp/%s", filename);
+        snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, filename);
         struct stat buffer;
         if (stat(file_path, &buffer) == 0) {
             FILE *file = fopen(file_path, "r");
@@ -189,9 +192,21 @@ void *handle_request(void *arg) {
     return NULL;
 }
 
-int main() {
+int main(int argv, char **argc) {
     setbuf(stdout, NULL);
     printf("Logs from your program will appear here!\n");
+
+    int opt;
+    struct option long_options[] = {
+        {"directory", required_argument, NULL, 'd'},
+        {NULL, 0, NULL, 0}};
+    while ((opt = getopt_long(argv, argc, "d:", long_options, NULL)) != -1) {
+        switch (opt) {
+        case 'd':
+            dir_path = optarg;
+            break;
+        }
+    }
 
     int server_fd = create_server_socket();
     printf("Waiting for a client to connect...\n");
