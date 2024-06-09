@@ -71,13 +71,34 @@ int main() {
     char method[8], path[1024], version[16];
     sscanf(buffer, "%s %s %s", method, path, version);
 
+    // printf("Buffer: %s\n\n", buffer);
     printf("Method: %s, Path: %s, Version: %s\n", method, path, version);
+
+    char *header_start = strstr(buffer, "\r\n") + 2;
+    char *header_end;
+    char *user_agent_header = NULL;
+    while ((header_end = strstr(header_start, "\r\n"))) {
+        if (header_start == header_end) {
+            break;
+        }
+
+        char header_name[256], header_value[256];
+        sscanf(header_start, "%[^:]: %[^\r\n]", header_name, header_value);
+        // printf("Header - %s: %s\n", header_name, header_value);
+        if (strcmp(header_name, "User-Agent") == 0) {
+            user_agent_header = malloc(strlen(header_value) + 1);
+            if (user_agent_header != NULL) {
+                strcpy(user_agent_header, header_value);
+            }
+        }
+
+        header_start = header_end + 2;
+    }
 
     int http_status_code;
     const char *reason_phrase;
     const char *content_type = "text/plain";
     char *response_body = NULL;
-
     if (strcmp(path, "/") == 0) {
         http_status_code = 200;
         reason_phrase = "OK";
@@ -90,6 +111,15 @@ int main() {
         if (response_body != NULL) {
             strcpy(response_body, path + 6);
         }
+    } else if (strcmp(path, "/user-agent") == 0) {
+        http_status_code = 200;
+        reason_phrase = "OK";
+        size_t response_lenth = strlen(user_agent_header) + 1;
+        response_body = malloc(response_lenth);
+        if (response_body != NULL) {
+            strcpy(response_body, user_agent_header);
+        }
+
     } else {
         http_status_code = 404;
         reason_phrase = "Not Found";
