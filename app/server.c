@@ -269,9 +269,7 @@ Route routes[] = {
     {HTTP_GET, "/echo/", handle_echo},
     {HTTP_GET, "/user-agent", handle_user_agent},
     {HTTP_GET, "/files/", handle_file_get},
-    {HTTP_POST, "/files/", handle_file_post},
-    {HTTP_GET, "/", handle_root},
-};
+    {HTTP_POST, "/files/", handle_file_post}};
 
 Response *handle_request(const char *request) {
     char method_str[MAX_BUFFER_SIZE], path[MAX_BUFFER_SIZE], version[MAX_BUFFER_SIZE];
