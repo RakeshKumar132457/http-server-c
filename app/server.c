@@ -105,6 +105,9 @@ char *serialize_headers(Response *response) {
     snprintf(header, MAX_HEADER_SIZE, "Content-Type: %s\r\n", response->content_type);
     strcat(headers, header);
 
+    snprintf(header, MAX_HEADER_SIZE, "Content-Length: %lu\r\n", strlen(response->body));
+    strcat(headers, header);
+
     for (int i = 0; i < response->num_headers; i++) {
         if (strcmp(response->headers[i].key, "Content-Encoding") == 0) {
             if (strcmp(response->headers[i].value, "gzip") == 0) {
