@@ -4,42 +4,32 @@ This is a simple HTTP server implemented in C. It supports handling GET and POST
 
 ## Features
 
-- Handles GET and POST requests
-- Serves static files from a specified directory
-- Supports routing based on the requested path
-- Echoes back the requested path for the `/echo` endpoint
-- Returns the user agent string for the `/user-agent` endpoint
-- Supports concurrent request handling using threads
+-   Handles GET and POST requests
+-   Serves static files from a specified directory
+-   Supports routing based on the requested path
+-   Echoes back the requested path for the `/echo` endpoint
+-   Returns the user agent string for the `/user-agent` endpoint
+-   Supports concurrent request handling using threads
 
 ## Getting Started
 
 ### Prerequisites
 
-- C compiler (e.g., GCC)
-- POSIX-compliant operating system (e.g., Linux, macOS)
+-   C compiler (e.g., GCC)
+-   POSIX-compliant operating system (e.g., Linux, macOS)
 
 ### Building the Server
 
 1. Clone the repository:
-
-  git clone https://github.com/RakeshKumar132457/http-server-c
-
+   `git clone https://github.com/RakeshKumar132457/http-server-c`
 2. Navigate to the project directory:
-
-  cd simple-http-server
-
-3. Compile the server:
-
-  gcc -o server server.c -lpthread
+   `cd http-server-c`
 
 ### Running the Server
 
-To start the server, run the following command:
-
-./server -d /path/to/directory
-
-Replace `/path/to/directory` with the directory path where the server should look for static files.
-
+Run the bash file to start the server:
+`./your_server.sh`
+You can also run it with `--directory /path/to/dir` for creating and reading files.
 The server will start listening on port 4221 by default.
 
 ## Usage
@@ -48,24 +38,19 @@ Once the server is running, you can send HTTP requests to it using tools like `c
 
 ### Endpoints
 
-- `/`: Returns a plain text response with an empty body.
-- `/echo/<message>`: Echoes back the `<message>` in the response body.
-- `/user-agent`: Returns the user agent string of the client making the request.
-- `/files/<filename>`: Serves the specified file from the directory provided during server startup.
+-   `/`: Returns a plain text response with an empty body.
+-   `/echo/<message>`: Echoes back the `<message>` in the response body.
+-   `/user-agent`: Returns the user agent string of the client making the request.
+-   `/files/<filename>`: Serves the specified file from the directory provided during server startup.
 
 ### Examples
 
-- Get the user agent string:
-
- curl http://localhost:4221/user-agent
-
-- Echo a message:
-
- curl http://localhost:4221/echo/Hello,%20World!
-
-- Serve a static file:
-
- curl http://localhost:4221/files/example.txt
+-   Get the user agent string:
+    curl http://localhost:4221/user-agent
+-   Echo a message:
+    curl http://localhost:4221/echo/Hello,%20World!
+-   Serve a static file:
+    curl http://localhost:4221/files/example.txt
 
 ## Contributing
 
