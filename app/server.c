@@ -195,7 +195,7 @@ Response *handle_root(const char *path, const char *request) {
 
 Response *handle_echo(const char *path, const char *request) {
     char *custom_headers = get_header_value(request, "Accept-Encoding");
-    Response *response = create_response(HTTP_OK, "text/plain", path + 5);
+    Response *response = create_response(HTTP_OK, "text/plain", path + 6);
     if (custom_headers != NULL && strcmp(custom_headers, "gzip") == 0) {
         set_header(response, "Content-Encoding", custom_headers);
         free(custom_headers);
