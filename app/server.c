@@ -31,6 +31,11 @@ typedef enum {
     HTTP_POST,
 } HttpMethod;
 
+typedef enum {
+    EXACT_MATCH,
+    PARTIAL_MATCH
+} RouteMatchType;
+
 typedef struct {
     char *key;
     char *value;
@@ -48,6 +53,7 @@ typedef struct {
 typedef struct {
     HttpMethod method;
     const char *path;
+    RouteMatchType match_type;
     Response *(*handler)(const char *, const char *);
 } Route;
 
@@ -266,10 +272,12 @@ Response *handle_file_post(const char *path, const char *request) {
 }
 
 Route routes[] = {
-    {HTTP_GET, "/echo/", handle_echo},
-    {HTTP_GET, "/user-agent", handle_user_agent},
-    {HTTP_GET, "/files/", handle_file_get},
-    {HTTP_POST, "/files/", handle_file_post}};
+    {HTTP_GET, "/echo/", PARTIAL_MATCH, handle_echo},
+    {HTTP_GET, "/user-agent", EXACT_MATCH, handle_user_agent},
+    {HTTP_GET, "/files/", PARTIAL_MATCH, handle_file_get},
+    {HTTP_POST, "/files/", PARTIAL_MATCH, handle_file_post},
+    {HTTP_GET, "/", EXACT_MATCH, handle_root},
+};
 
 Response *handle_request(const char *request) {
     char method_str[MAX_BUFFER_SIZE], path[MAX_BUFFER_SIZE], version[MAX_BUFFER_SIZE];
@@ -279,10 +287,17 @@ Response *handle_request(const char *request) {
     if (strcmp(method_str, "POST") == 0) {
         method = HTTP_POST;
     }
-
     for (int i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {
-        if (strncmp(path, routes[i].path, strlen(routes[i].path)) == 0 && routes[i].method == method) {
-            return routes[i].handler(path, request);
+        Route r = routes[i];
+        if (routes[i].match_type == EXACT_MATCH) {
+            if (strcmp(path, routes[i].path) == 0 && routes[i].method == method) {
+                return routes[i].handler(path, request);
+            }
+        } else if (routes[i].match_type == PARTIAL_MATCH) {
+            size_t route_path_len = strlen(routes[i].path);
+            if (strncmp(path, routes[i].path, route_path_len) == 0 && routes[i].method == method) {
+                return routes[i].handler(path, request);
+            }
         }
     }
 
