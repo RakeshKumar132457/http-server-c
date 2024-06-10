@@ -136,6 +136,14 @@ char *serialize_response(Response *response) {
     return response_string;
 }
 
+char *get_request_body(char *request) {
+    char *request_body = strstr(request, "\r\n\r\n");
+    if (request_body != NULL) {
+        request_body += strlen("\r\n\r\n");
+    }
+    return request_body;
+}
+
 void send_response(int client_fd, Response *response) {
     char *response_str = serialize_response(response);
     send(client_fd, response_str, strlen(response_str), 0);
@@ -170,22 +178,28 @@ char *get_header_value(const char *header_start, const char *header_name) {
     return NULL;
 }
 
-Response *handle_root(const char *path, const char *request_body) {
+Response *handle_root(const char *path, const char *request) {
     return create_response(HTTP_OK, "text/plain", "");
 }
 
-Response *handle_echo(const char *path, const char *request_body) {
-    return create_response(HTTP_OK, "text/plain", path + 6);
+Response *handle_echo(const char *path, const char *request) {
+    char *custom_headers = get_header_value(request, "Accept-Encoding");
+    Response *response = create_response(HTTP_OK, "text/plain", path + 5);
+    if (custom_headers != NULL) {
+        set_header(response, "Content-Encoding", custom_headers);
+        free(custom_headers);
+    }
+    return response;
 }
 
-Response *handle_user_agent(const char *path, const char *request_body) {
-    char *user_agent = get_header_value(request_body, "User-Agent");
+Response *handle_user_agent(const char *path, const char *request) {
+    char *user_agent = get_header_value(request, "User-Agent");
     Response *response = create_response(HTTP_OK, "text/plain", user_agent ? user_agent : "");
     free(user_agent);
     return response;
 }
 
-Response *handle_file_get(const char *path, const char *request_body) {
+Response *handle_file_get(const char *path, const char *request) {
     char *filename = strstr(path, "/files/");
     if (filename == NULL) {
         return create_response(HTTP_NOT_FOUND, "text/plain", "");
@@ -216,7 +230,7 @@ Response *handle_file_get(const char *path, const char *request_body) {
     }
 }
 
-Response *handle_file_post(const char *path, const char *request_body) {
+Response *handle_file_post(const char *path, const char *request) {
     char *filename = strstr(path, "/files/");
     if (filename == NULL) {
         return create_response(HTTP_NOT_FOUND, "text/plain", "");
@@ -225,6 +239,7 @@ Response *handle_file_post(const char *path, const char *request_body) {
     char file_path[MAX_FILENAME_LENGTH];
     snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, filename);
     printf("%s\n", file_path);
+    char *request_body = get_request_body(request);
     if (request_body == NULL) {
         return create_response(HTTP_BAD_REQUEST, "text/plain", "");
     }
@@ -256,14 +271,9 @@ Response *handle_request(const char *request) {
         method = HTTP_POST;
     }
 
-    char *request_body = strstr(request, "\r\n\r\n");
-    if (request_body != NULL) {
-        request_body += strlen("\r\n\r\n");
-    }
-
     for (int i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {
         if (strncmp(path, routes[i].path, strlen(routes[i].path)) == 0 && routes[i].method == method) {
-            return routes[i].handler(path, request_body);
+            return routes[i].handler(path, request);
         }
     }
 
