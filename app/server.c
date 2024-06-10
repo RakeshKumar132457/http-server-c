@@ -136,7 +136,7 @@ char *serialize_response(Response *response) {
     return response_string;
 }
 
-char *get_request_body(char *request) {
+char *get_request_body(const char *request) {
     char *request_body = strstr(request, "\r\n\r\n");
     if (request_body != NULL) {
         request_body += strlen("\r\n\r\n");
@@ -185,7 +185,7 @@ Response *handle_root(const char *path, const char *request) {
 Response *handle_echo(const char *path, const char *request) {
     char *custom_headers = get_header_value(request, "Accept-Encoding");
     Response *response = create_response(HTTP_OK, "text/plain", path + 5);
-    if (custom_headers != NULL) {
+    if (custom_headers != NULL && strcmp(custom_headers, "gzip")) {
         set_header(response, "Content-Encoding", custom_headers);
         free(custom_headers);
     }
