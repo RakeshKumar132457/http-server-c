@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #define MAX_BUFFER_SIZE 4096
 #define MAX_HEADER_SIZE 1024
@@ -199,16 +200,45 @@ Response *handle_root(const char *path, const char *request) {
     return create_response(HTTP_OK, "text/plain", "");
 }
 
-// Response *handle_echo(const char *path, const char *request) {
-//     char *custom_headers = get_header_value(request, "Accept-Encoding");
-//     Response *response = create_response(HTTP_OK, "text/plain", path + 6);
-//     if (custom_headers != NULL && strcmp(custom_headers, "gzip") == 0) {
-//         set_header(response, "Content-Encoding", custom_headers);
-//         free(custom_headers);
-//     }
-//     return response;
-// }
+void compress_string(const char *input, size_t inputLen, char **output, size_t *outputLen) {
+    z_stream strm;
+    memset(&strm, 0, sizeof(strm));
+    if (deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+        fprintf(stderr, "Error: Failed to initialize zlib compression stream.\n");
+        *output = NULL;
+        *outputLen = 0;
+        return;
+    }
 
+    size_t maxCompressedSize = deflateBound(&strm, inputLen);
+    *output = (char *)malloc(maxCompressedSize);
+    if (*output == NULL) {
+        fprintf(stderr, "Error: Failed to allocate memory for compressed output.\n");
+        deflateEnd(&strm);
+        *outputLen = 0;
+        return;
+    }
+
+    strm.next_in = (Bytef *)input;
+    strm.avail_in = inputLen;
+
+    strm.next_out = (Bytef *)*output;
+    strm.avail_out = maxCompressedSize;
+
+    int ret = deflate(&strm, Z_FINISH);
+    if (ret != Z_STREAM_END) {
+        fprintf(stderr, "Error: Failed to compress string.\n");
+        deflateEnd(&strm);
+        free(*output);
+        *output = NULL;
+        *outputLen = 0;
+        return;
+    }
+
+    *outputLen = strm.total_out;
+
+    deflateEnd(&strm);
+}
 Response *handle_echo(const char *path, const char *request) {
     char *custom_headers = get_header_value(request, "Accept-Encoding");
     Response *response = create_response(HTTP_OK, "text/plain", path + 6);
@@ -219,7 +249,6 @@ Response *handle_echo(const char *path, const char *request) {
 
         token = strtok_r(custom_headers, ",", &last);
         while (token != NULL) {
-            // Trim leading and trailing whitespace
             char *trimmed_token = strtok(token, " \t\r\n");
 
             if (strcmp(trimmed_token, "gzip") == 0) {
@@ -231,6 +260,14 @@ Response *handle_echo(const char *path, const char *request) {
 
         if (found_gzip) {
             set_header(response, "Content-Encoding", "gzip");
+            char *comp_string = NULL;
+            size_t comp_string_len = 0;
+            size_t response_body_len = strlen(response->body);
+            compress_string(response->body, response_body_len, &comp_string, &comp_string_len);
+            if (comp_string) {
+                free(response->body);
+                response->body = comp_string;
+            }
         }
 
         free(custom_headers);
