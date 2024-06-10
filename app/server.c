@@ -106,8 +106,15 @@ char *serialize_headers(Response *response) {
     strcat(headers, header);
 
     for (int i = 0; i < response->num_headers; i++) {
-        snprintf(header, MAX_HEADER_SIZE, "%s: %s\r\n", response->headers[i].key, response->headers[i].value);
-        strcat(headers, header);
+        if (strcmp(response->headers[i].key, "Content-Encoding") == 0) {
+            if (strcmp(response->headers[i].value, "gzip") == 0) {
+                snprintf(header, MAX_HEADER_SIZE, "%s: %s\r\n", response->headers[i].key, response->headers[i].value);
+                strcat(headers, header);
+            }
+        } else {
+            snprintf(header, MAX_HEADER_SIZE, "%s: %s\r\n", response->headers[i].key, response->headers[i].value);
+            strcat(headers, header);
+        }
     }
 
     strcat(headers, "\r\n");
@@ -146,6 +153,7 @@ char *get_request_body(const char *request) {
 
 void send_response(int client_fd, Response *response) {
     char *response_str = serialize_response(response);
+    printf("%s\n", response_str);
     send(client_fd, response_str, strlen(response_str), 0);
     free(response_str);
 }
@@ -185,7 +193,7 @@ Response *handle_root(const char *path, const char *request) {
 Response *handle_echo(const char *path, const char *request) {
     char *custom_headers = get_header_value(request, "Accept-Encoding");
     Response *response = create_response(HTTP_OK, "text/plain", path + 5);
-    if (custom_headers != NULL && strcmp(custom_headers, "gzip")) {
+    if (custom_headers != NULL && strcmp(custom_headers, "gzip") == 0) {
         set_header(response, "Content-Encoding", custom_headers);
         free(custom_headers);
     }
