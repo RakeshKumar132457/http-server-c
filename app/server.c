@@ -199,13 +199,43 @@ Response *handle_root(const char *path, const char *request) {
     return create_response(HTTP_OK, "text/plain", "");
 }
 
+// Response *handle_echo(const char *path, const char *request) {
+//     char *custom_headers = get_header_value(request, "Accept-Encoding");
+//     Response *response = create_response(HTTP_OK, "text/plain", path + 6);
+//     if (custom_headers != NULL && strcmp(custom_headers, "gzip") == 0) {
+//         set_header(response, "Content-Encoding", custom_headers);
+//         free(custom_headers);
+//     }
+//     return response;
+// }
+
 Response *handle_echo(const char *path, const char *request) {
     char *custom_headers = get_header_value(request, "Accept-Encoding");
     Response *response = create_response(HTTP_OK, "text/plain", path + 6);
-    if (custom_headers != NULL && strcmp(custom_headers, "gzip") == 0) {
-        set_header(response, "Content-Encoding", custom_headers);
+
+    if (custom_headers != NULL) {
+        char *token, *last = NULL;
+        int found_gzip = 0;
+
+        token = strtok_r(custom_headers, ",", &last);
+        while (token != NULL) {
+            // Trim leading and trailing whitespace
+            char *trimmed_token = strtok(token, " \t\r\n");
+
+            if (strcmp(trimmed_token, "gzip") == 0) {
+                found_gzip = 1;
+                break;
+            }
+            token = strtok_r(NULL, ",", &last);
+        }
+
+        if (found_gzip) {
+            set_header(response, "Content-Encoding", "gzip");
+        }
+
         free(custom_headers);
     }
+
     return response;
 }
 
