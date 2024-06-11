@@ -277,39 +277,24 @@ Response *handle_echo(const char *path, const char *request) {
             }
             token = strtok_r(NULL, ",", &last);
         }
+        free(custom_headers);
+
         if (found_gzip) {
-            const char *original_body = response->body;
-            size_t original_body_len = strlen(original_body);
-            uLong compressed_body_len;
-            char *compressed_body = gzip_deflate(original_body, original_body_len, &compressed_body_len);
+            size_t original_body_len = strlen(response->body);
+            size_t compressed_body_len;
+            char *compressed_body = gzip_deflate(response->body, original_body_len, &compressed_body_len);
 
             if (compressed_body != NULL) {
-                // printf("Compressed data (%zu bytes):\n", compressed_body_len);
-                // for (size_t i = 0; i < compressed_body_len; i++) {
-                //     printf("%02X ", (unsigned char)compressed_body[i]);
-                // }
-                // printf("\n");
-
                 free(response->body);
-
-                response->body = malloc(compressed_body_len);
+                response->body = compressed_body;
                 response->body_length = compressed_body_len;
-                if (response->body == NULL) {
-                    free(compressed_body);
-                    return NULL;
-                }
-
-                memcpy(response->body, compressed_body, compressed_body_len);
-
                 set_header(response, "Content-Encoding", "gzip");
-                char content_length[20];
-                snprintf(content_length, sizeof(content_length), "%zu", compressed_body_len);
-                // set_header(response, "Content-Length", content_length);
-
-                free(compressed_body);
             }
+        } else {
+            response->body_length = strlen(response->body);
         }
-        free(custom_headers);
+    } else {
+        response->body_length = strlen(response->body);
     }
 
     return response;
