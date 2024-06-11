@@ -49,6 +49,7 @@ typedef struct {
     Header headers[MAX_HEADERS];
     int num_headers;
     char *body;
+    size_t body_length;
 } Response;
 
 typedef struct {
@@ -112,7 +113,7 @@ char *serialize_headers(Response *response) {
     snprintf(header, MAX_HEADER_SIZE, "Content-Type: %s\r\n", response->content_type);
     strcat(headers, header);
 
-    snprintf(header, MAX_HEADER_SIZE, "Content-Length: %lu\r\n", strlen(response->body));
+    snprintf(header, MAX_HEADER_SIZE, "Content-Length: %lu\r\n", response->body_length ? response->body_length : strlen(response->body));
     strcat(headers, header);
 
     for (int i = 0; i < response->num_headers; i++) {
@@ -132,23 +133,51 @@ char *serialize_headers(Response *response) {
 }
 
 char *serialize_body(Response *response) {
-    return strdup(response->body);
+    size_t body_length = response->body_length;
+    char *body = (char *)malloc(body_length);
+    memcpy(body, response->body, body_length);
+    return body;
 }
 
 char *serialize_response(Response *response) {
     char *status_line = serialize_status_line(response);
     char *headers = serialize_headers(response);
-    char *body = serialize_body(response);
+    size_t body_length = response->body_length;
 
-    int response_length = strlen(status_line) + strlen(headers) + strlen(body);
+    size_t response_length = strlen(status_line) + strlen(headers);
+    int gzip_encoding = 0;
+
+    for (int i = 0; i < response->num_headers; i++) {
+        if (strcmp(response->headers[i].key, "Content-Encoding") == 0 &&
+            strcmp(response->headers[i].value, "gzip") == 0) {
+            gzip_encoding = 1;
+            break;
+        }
+    }
+
+    if (gzip_encoding) {
+        response_length += body_length;
+    } else {
+        response_length += strlen(response->body);
+    }
+
+    printf("%zu %zu %zu %zu", response_length, strlen(response->body), strlen(status_line), strlen(headers));
+
     char *response_string = (char *)malloc(response_length + 1);
+
     strcpy(response_string, status_line);
     strcat(response_string, headers);
-    strcat(response_string, body);
+
+    if (gzip_encoding) {
+        memcpy(response_string + strlen(status_line) + strlen(headers), response->body, body_length);
+    } else {
+        strcat(response_string, response->body);
+    }
+
+    response_string[response_length] = '\0';
 
     free(status_line);
     free(headers);
-    free(body);
 
     return response_string;
 }
@@ -163,8 +192,9 @@ char *get_request_body(const char *request) {
 
 void send_response(int client_fd, Response *response) {
     char *response_str = serialize_response(response);
-    printf("%s\n", response_str);
-    send(client_fd, response_str, strlen(response_str), 0);
+    size_t response_length = strlen(response_str) + response->body_length;
+
+    send(client_fd, response_str, response_length, 0);
     free(response_str);
 }
 
@@ -200,45 +230,35 @@ Response *handle_root(const char *path, const char *request) {
     return create_response(HTTP_OK, "text/plain", "");
 }
 
-void compress_string(const char *input, size_t inputLen, char **output, size_t *outputLen) {
-    z_stream strm;
-    memset(&strm, 0, sizeof(strm));
-    if (deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-        fprintf(stderr, "Error: Failed to initialize zlib compression stream.\n");
-        *output = NULL;
-        *outputLen = 0;
-        return;
+static char *gzip_deflate(const char *data, size_t data_len, size_t *gzip_len) {
+    z_stream stream = {0};
+    if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 31, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+        return NULL;
     }
 
-    size_t maxCompressedSize = deflateBound(&strm, inputLen);
-    *output = (char *)malloc(maxCompressedSize);
-    if (*output == NULL) {
-        fprintf(stderr, "Error: Failed to allocate memory for compressed output.\n");
-        deflateEnd(&strm);
-        *outputLen = 0;
-        return;
+    size_t max_len = deflateBound(&stream, data_len);
+    char *gzip_data = malloc(max_len);
+    if (gzip_data == NULL) {
+        deflateEnd(&stream);
+        return NULL;
     }
 
-    strm.next_in = (Bytef *)input;
-    strm.avail_in = inputLen;
+    stream.next_in = (Bytef *)data;
+    stream.avail_in = data_len;
+    stream.next_out = (Bytef *)gzip_data;
+    stream.avail_out = max_len;
 
-    strm.next_out = (Bytef *)*output;
-    strm.avail_out = maxCompressedSize;
-
-    int ret = deflate(&strm, Z_FINISH);
-    if (ret != Z_STREAM_END) {
-        fprintf(stderr, "Error: Failed to compress string.\n");
-        deflateEnd(&strm);
-        free(*output);
-        *output = NULL;
-        *outputLen = 0;
-        return;
+    if (deflate(&stream, Z_FINISH) != Z_STREAM_END) {
+        free(gzip_data);
+        deflateEnd(&stream);
+        return NULL;
     }
 
-    *outputLen = strm.total_out;
-
-    deflateEnd(&strm);
+    *gzip_len = stream.total_out;
+    deflateEnd(&stream);
+    return gzip_data;
 }
+
 Response *handle_echo(const char *path, const char *request) {
     char *custom_headers = get_header_value(request, "Accept-Encoding");
     Response *response = create_response(HTTP_OK, "text/plain", path + 6);
@@ -257,19 +277,38 @@ Response *handle_echo(const char *path, const char *request) {
             }
             token = strtok_r(NULL, ",", &last);
         }
-
         if (found_gzip) {
-            set_header(response, "Content-Encoding", "gzip");
-            char *comp_string = NULL;
-            size_t comp_string_len = 0;
-            size_t response_body_len = strlen(response->body);
-            compress_string(response->body, response_body_len, &comp_string, &comp_string_len);
-            if (comp_string) {
+            const char *original_body = response->body;
+            size_t original_body_len = strlen(original_body);
+            uLong compressed_body_len;
+            char *compressed_body = gzip_deflate(original_body, original_body_len, &compressed_body_len);
+
+            if (compressed_body != NULL) {
+                // printf("Compressed data (%zu bytes):\n", compressed_body_len);
+                // for (size_t i = 0; i < compressed_body_len; i++) {
+                //     printf("%02X ", (unsigned char)compressed_body[i]);
+                // }
+                // printf("\n");
+
                 free(response->body);
-                response->body = comp_string;
+
+                response->body = malloc(compressed_body_len);
+                response->body_length = compressed_body_len;
+                if (response->body == NULL) {
+                    free(compressed_body);
+                    return NULL;
+                }
+
+                memcpy(response->body, compressed_body, compressed_body_len);
+
+                set_header(response, "Content-Encoding", "gzip");
+                char content_length[20];
+                snprintf(content_length, sizeof(content_length), "%zu", compressed_body_len);
+                // set_header(response, "Content-Length", content_length);
+
+                free(compressed_body);
             }
         }
-
         free(custom_headers);
     }
 
