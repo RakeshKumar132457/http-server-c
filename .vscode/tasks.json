@@ -2,26 +2,16 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "build",
             "type": "shell",
-            "label": "gcc build active file",
-            "command": "/usr/bin/gcc",
-            "args": [
-                "-g",
-                "-o",
-                "${fileDirname}/${fileBasenameNoExtension}",
-                "${file}",
-                "-lz"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}"
+            "command": "make",
+            "group": {
+                "kind": "build",
+                "isDefault": true
             },
             "problemMatcher": [
                 "$gcc"
             ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
         }
     ]
 }

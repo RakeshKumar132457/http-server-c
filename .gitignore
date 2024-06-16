@@ -1,3 +1,5 @@
 .vscode/
 codecrafters.yml
 app/server
+bin/
+obj/

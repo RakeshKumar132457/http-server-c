@@ -2,20 +2,21 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <zlib.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <unistd.h>
-#include <zlib.h>
 
-#define MAX_BUFFER_SIZE 4096
-#define MAX_HEADER_SIZE 1024
-#define MAX_HEADERS 20
+#define MAX_BUFFER_SIZE     4096
+#define MAX_HEADER_SIZE     1024
+#define MAX_HEADERS         20
 #define MAX_FILENAME_LENGTH 256
-#define SERVER_PORT 4221
-#define BACKLOG 1
+#define SERVER_PORT         4221
+#define BACKLOG             1
 
 char *dir_path = "/tmp";
 
@@ -32,10 +33,7 @@ typedef enum {
     HTTP_POST,
 } HttpMethod;
 
-typedef enum {
-    EXACT_MATCH,
-    PARTIAL_MATCH
-} RouteMatchType;
+typedef enum { EXACT_MATCH, PARTIAL_MATCH } RouteMatchType;
 
 typedef struct {
     char *key;
@@ -59,7 +57,11 @@ typedef struct {
     Response *(*handler)(const char *, const char *);
 } Route;
 
-Response *create_response(HttpStatusCode status_code, const char *content_type, const char *body) {
+Response *create_response(
+    HttpStatusCode status_code,
+    const char *content_type,
+    const char *body)
+{
     Response *response = (Response *)malloc(sizeof(Response));
     response->status_code = status_code;
     response->reason_phrase = NULL;
@@ -69,7 +71,8 @@ Response *create_response(HttpStatusCode status_code, const char *content_type, 
     return response;
 }
 
-void set_header(Response *response, const char *key, const char *value) {
+void set_header(Response *response, const char *key, const char *value)
+{
     if (response->num_headers < MAX_HEADERS) {
         response->headers[response->num_headers].key = strdup(key);
         response->headers[response->num_headers].value = strdup(value);
@@ -77,7 +80,8 @@ void set_header(Response *response, const char *key, const char *value) {
     }
 }
 
-char *serialize_status_line(Response *response) {
+char *serialize_status_line(Response *response)
+{
     const char *reason_phrase;
     switch (response->status_code) {
     case HTTP_OK:
@@ -101,29 +105,53 @@ char *serialize_status_line(Response *response) {
     }
 
     char *status_line = (char *)malloc(MAX_HEADER_SIZE);
-    snprintf(status_line, MAX_HEADER_SIZE, "HTTP/1.1 %d %s\r\n", response->status_code, reason_phrase);
+    snprintf(
+        status_line,
+        MAX_HEADER_SIZE,
+        "HTTP/1.1 %d %s\r\n",
+        response->status_code,
+        reason_phrase);
     return status_line;
 }
 
-char *serialize_headers(Response *response) {
+char *serialize_headers(Response *response)
+{
     char *headers = (char *)malloc(MAX_HEADER_SIZE);
     strcpy(headers, "");
 
     char header[MAX_HEADER_SIZE];
-    snprintf(header, MAX_HEADER_SIZE, "Content-Type: %s\r\n", response->content_type);
+    snprintf(
+        header,
+        MAX_HEADER_SIZE,
+        "Content-Type: %s\r\n",
+        response->content_type);
     strcat(headers, header);
 
-    snprintf(header, MAX_HEADER_SIZE, "Content-Length: %lu\r\n", response->body_length ? response->body_length : strlen(response->body));
+    snprintf(
+        header,
+        MAX_HEADER_SIZE,
+        "Content-Length: %lu\r\n",
+        response->body_length ? response->body_length : strlen(response->body));
     strcat(headers, header);
 
     for (int i = 0; i < response->num_headers; i++) {
         if (strcmp(response->headers[i].key, "Content-Encoding") == 0) {
             if (strcmp(response->headers[i].value, "gzip") == 0) {
-                snprintf(header, MAX_HEADER_SIZE, "%s: %s\r\n", response->headers[i].key, response->headers[i].value);
+                snprintf(
+                    header,
+                    MAX_HEADER_SIZE,
+                    "%s: %s\r\n",
+                    response->headers[i].key,
+                    response->headers[i].value);
                 strcat(headers, header);
             }
         } else {
-            snprintf(header, MAX_HEADER_SIZE, "%s: %s\r\n", response->headers[i].key, response->headers[i].value);
+            snprintf(
+                header,
+                MAX_HEADER_SIZE,
+                "%s: %s\r\n",
+                response->headers[i].key,
+                response->headers[i].value);
             strcat(headers, header);
         }
     }
@@ -132,14 +160,16 @@ char *serialize_headers(Response *response) {
     return headers;
 }
 
-char *serialize_body(Response *response) {
+char *serialize_body(Response *response)
+{
     size_t body_length = response->body_length;
     char *body = (char *)malloc(body_length);
     memcpy(body, response->body, body_length);
     return body;
 }
 
-char *serialize_response(Response *response) {
+char *serialize_response(Response *response)
+{
     char *status_line = serialize_status_line(response);
     char *headers = serialize_headers(response);
     size_t body_length = response->body_length;
@@ -161,7 +191,12 @@ char *serialize_response(Response *response) {
         response_length += strlen(response->body);
     }
 
-    printf("%zu %zu %zu %zu", response_length, strlen(response->body), strlen(status_line), strlen(headers));
+    printf(
+        "%zu %zu %zu %zu",
+        response_length,
+        strlen(response->body),
+        strlen(status_line),
+        strlen(headers));
 
     char *response_string = (char *)malloc(response_length + 1);
 
@@ -169,7 +204,10 @@ char *serialize_response(Response *response) {
     strcat(response_string, headers);
 
     if (gzip_encoding) {
-        memcpy(response_string + strlen(status_line) + strlen(headers), response->body, body_length);
+        memcpy(
+            response_string + strlen(status_line) + strlen(headers),
+            response->body,
+            body_length);
     } else {
         strcat(response_string, response->body);
     }
@@ -182,7 +220,8 @@ char *serialize_response(Response *response) {
     return response_string;
 }
 
-char *get_request_body(const char *request) {
+char *get_request_body(const char *request)
+{
     char *request_body = strstr(request, "\r\n\r\n");
     if (request_body != NULL) {
         request_body += strlen("\r\n\r\n");
@@ -190,7 +229,8 @@ char *get_request_body(const char *request) {
     return request_body;
 }
 
-void send_response(int client_fd, Response *response) {
+void send_response(int client_fd, Response *response)
+{
     char *response_str = serialize_response(response);
     size_t response_length = strlen(response_str) + response->body_length;
 
@@ -198,7 +238,8 @@ void send_response(int client_fd, Response *response) {
     free(response_str);
 }
 
-void free_response(Response *response) {
+void free_response(Response *response)
+{
     for (int i = 0; i < response->num_headers; i++) {
         free(response->headers[i].key);
         free(response->headers[i].value);
@@ -207,7 +248,8 @@ void free_response(Response *response) {
     free(response);
 }
 
-char *get_header_value(const char *header_start, const char *header_name) {
+char *get_header_value(const char *header_start, const char *header_name)
+{
     char *header_end;
     while ((header_end = strstr(header_start, "\r\n"))) {
         if (header_start == header_end) {
@@ -219,20 +261,29 @@ char *get_header_value(const char *header_start, const char *header_name) {
         header_start = header_end + 2;
 
         char name[MAX_HEADER_SIZE], value[MAX_HEADER_SIZE];
-        if (sscanf(header, "%[^:]: %[^\r\n]", name, value) == 2 && strcmp(name, header_name) == 0) {
+        if (sscanf(header, "%[^:]: %[^\r\n]", name, value) == 2 &&
+            strcmp(name, header_name) == 0) {
             return strdup(value);
         }
     }
     return NULL;
 }
 
-Response *handle_root(const char *path, const char *request) {
+Response *handle_root(const char *path, const char *request)
+{
     return create_response(HTTP_OK, "text/plain", "");
 }
 
-static char *gzip_deflate(const char *data, size_t data_len, size_t *gzip_len) {
-    z_stream stream = {0};
-    if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 31, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+static char *gzip_deflate(const char *data, size_t data_len, size_t *gzip_len)
+{
+    z_stream stream = { 0 };
+    if (deflateInit2(
+            &stream,
+            Z_DEFAULT_COMPRESSION,
+            Z_DEFLATED,
+            31,
+            8,
+            Z_DEFAULT_STRATEGY) != Z_OK) {
         return NULL;
     }
 
@@ -259,7 +310,8 @@ static char *gzip_deflate(const char *data, size_t data_len, size_t *gzip_len) {
     return gzip_data;
 }
 
-Response *handle_echo(const char *path, const char *request) {
+Response *handle_echo(const char *path, const char *request)
+{
     char *custom_headers = get_header_value(request, "Accept-Encoding");
     Response *response = create_response(HTTP_OK, "text/plain", path + 6);
 
@@ -282,7 +334,8 @@ Response *handle_echo(const char *path, const char *request) {
         if (found_gzip) {
             size_t original_body_len = strlen(response->body);
             size_t compressed_body_len;
-            char *compressed_body = gzip_deflate(response->body, original_body_len, &compressed_body_len);
+            char *compressed_body = gzip_deflate(
+                response->body, original_body_len, &compressed_body_len);
 
             if (compressed_body != NULL) {
                 free(response->body);
@@ -300,14 +353,17 @@ Response *handle_echo(const char *path, const char *request) {
     return response;
 }
 
-Response *handle_user_agent(const char *path, const char *request) {
+Response *handle_user_agent(const char *path, const char *request)
+{
     char *user_agent = get_header_value(request, "User-Agent");
-    Response *response = create_response(HTTP_OK, "text/plain", user_agent ? user_agent : "");
+    Response *response =
+        create_response(HTTP_OK, "text/plain", user_agent ? user_agent : "");
     free(user_agent);
     return response;
 }
 
-Response *handle_file_get(const char *path, const char *request) {
+Response *handle_file_get(const char *path, const char *request)
+{
     char *filename = strstr(path, "/files/");
     if (filename == NULL) {
         return create_response(HTTP_NOT_FOUND, "text/plain", "");
@@ -320,17 +376,20 @@ Response *handle_file_get(const char *path, const char *request) {
         FILE *file = fopen(file_path, "r");
         if (file == NULL) {
             perror("Error opening file\n");
-            return create_response(HTTP_INTERNAL_SERVER_ERROR, "text/plain", "");
+            return create_response(
+                HTTP_INTERNAL_SERVER_ERROR, "text/plain", "");
         }
         char *file_content = malloc(buffer.st_size + 1);
         if (file_content == NULL) {
             fclose(file);
-            return create_response(HTTP_INTERNAL_SERVER_ERROR, "text/plain", "");
+            return create_response(
+                HTTP_INTERNAL_SERVER_ERROR, "text/plain", "");
         }
         size_t file_read = fread(file_content, 1, buffer.st_size, file);
         file_content[file_read] = '\0';
         fclose(file);
-        Response *response = create_response(HTTP_OK, "application/octet-stream", file_content);
+        Response *response =
+            create_response(HTTP_OK, "application/octet-stream", file_content);
         free(file_content);
         return response;
     } else {
@@ -338,7 +397,8 @@ Response *handle_file_get(const char *path, const char *request) {
     }
 }
 
-Response *handle_file_post(const char *path, const char *request) {
+Response *handle_file_post(const char *path, const char *request)
+{
     char *filename = strstr(path, "/files/");
     if (filename == NULL) {
         return create_response(HTTP_NOT_FOUND, "text/plain", "");
@@ -363,15 +423,17 @@ Response *handle_file_post(const char *path, const char *request) {
 }
 
 Route routes[] = {
-    {HTTP_GET, "/echo/", PARTIAL_MATCH, handle_echo},
-    {HTTP_GET, "/user-agent", EXACT_MATCH, handle_user_agent},
-    {HTTP_GET, "/files/", PARTIAL_MATCH, handle_file_get},
-    {HTTP_POST, "/files/", PARTIAL_MATCH, handle_file_post},
-    {HTTP_GET, "/", EXACT_MATCH, handle_root},
+    { HTTP_GET, "/echo/", PARTIAL_MATCH, handle_echo },
+    { HTTP_GET, "/user-agent", EXACT_MATCH, handle_user_agent },
+    { HTTP_GET, "/files/", PARTIAL_MATCH, handle_file_get },
+    { HTTP_POST, "/files/", PARTIAL_MATCH, handle_file_post },
+    { HTTP_GET, "/", EXACT_MATCH, handle_root },
 };
 
-Response *handle_request(const char *request) {
-    char method_str[MAX_BUFFER_SIZE], path[MAX_BUFFER_SIZE], version[MAX_BUFFER_SIZE];
+Response *handle_request(const char *request)
+{
+    char method_str[MAX_BUFFER_SIZE], path[MAX_BUFFER_SIZE],
+        version[MAX_BUFFER_SIZE];
     sscanf(request, "%s %s %s", method_str, path, version);
 
     HttpMethod method = HTTP_GET;
@@ -381,12 +443,14 @@ Response *handle_request(const char *request) {
     for (int i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {
         Route r = routes[i];
         if (routes[i].match_type == EXACT_MATCH) {
-            if (strcmp(path, routes[i].path) == 0 && routes[i].method == method) {
+            if (strcmp(path, routes[i].path) == 0 &&
+                routes[i].method == method) {
                 return routes[i].handler(path, request);
             }
         } else if (routes[i].match_type == PARTIAL_MATCH) {
             size_t route_path_len = strlen(routes[i].path);
-            if (strncmp(path, routes[i].path, route_path_len) == 0 && routes[i].method == method) {
+            if (strncmp(path, routes[i].path, route_path_len) == 0 &&
+                routes[i].method == method) {
                 return routes[i].handler(path, request);
             }
         }
@@ -395,7 +459,8 @@ Response *handle_request(const char *request) {
     return create_response(HTTP_NOT_FOUND, "text/plain", "");
 }
 
-void *handle_client(void *arg) {
+void *handle_client(void *arg)
+{
     int client_fd = *(int *)arg;
     free(arg);
 
@@ -415,7 +480,8 @@ void *handle_client(void *arg) {
     return NULL;
 }
 
-int create_server_socket() {
+int create_server_socket()
+{
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         perror("Socket creation failed");
@@ -423,7 +489,8 @@ int create_server_socket() {
     }
 
     int reuse = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) <
+        0) {
         perror("SO_REUSEPORT failed");
         exit(1);
     }
@@ -431,10 +498,11 @@ int create_server_socket() {
     struct sockaddr_in serv_addr = {
         .sin_family = AF_INET,
         .sin_port = htons(SERVER_PORT),
-        .sin_addr = {htonl(INADDR_ANY)},
+        .sin_addr = { htonl(INADDR_ANY) },
     };
 
-    if (bind(server_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) != 0) {
+    if (bind(server_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) !=
+        0) {
         perror("Bind failed");
         exit(1);
     }
@@ -447,14 +515,15 @@ int create_server_socket() {
     return server_fd;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     setbuf(stdout, NULL);
     printf("Logs from your program will appear here!\n");
 
     int opt;
     struct option long_options[] = {
-        {"directory", required_argument, NULL, 'd'},
-        {NULL, 0, NULL, 0}};
+        { "directory", required_argument, NULL, 'd' }, { NULL, 0, NULL, 0 }
+    };
     while ((opt = getopt_long(argc, argv, "d:", long_options, NULL)) != -1) {
         switch (opt) {
         case 'd':
@@ -469,7 +538,8 @@ int main(int argc, char **argv) {
     while (1) {
         struct sockaddr_in client_addr;
         socklen_t client_addr_len = sizeof(client_addr);
-        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
+        int client_fd = accept(
+            server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
         if (client_fd < 0) {
             perror("Accept failed");
             continue;
